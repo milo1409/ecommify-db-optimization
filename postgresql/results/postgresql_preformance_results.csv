@@ -1,0 +1,6 @@
+query,execution_before_ms,execution_after_ms,improvement_percent,scan_before,scan_after,interpretation
+Historial órdenes por cliente,15.442,9.210,40.36,Seq Scan + Index Scan,Index Scan + Index Scan,Mejora por uso de índice sobre customer_id y fecha
+Ventas por categoría y mes,1902.142,395.193,79.22,Parallel Seq Scan + Hash Join,Index Scan + Hash Join,Mejora significativa por índice sobre estado y fecha de orden
+Desempeño vendedores por región,424.708,397.821,6.33,Seq Scan + Hash Join,Index Only Scan + Hash Join,Mejora leve por uso de índice en order_items
+Productos con reseñas negativas,912.709,2408.446,-163.87,Seq Scan + Hash Join,Index Scan + Index Only Scan,El índice no mejoró la consulta por baja selectividad y mayor costo de lectura
+Órdenes particionadas por año,N/A,26.825,N/A,N/A,Index Only Scan sobre partición 2018,Evidencia de partition pruning

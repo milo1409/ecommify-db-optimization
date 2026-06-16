@@ -1,0 +1,36 @@
+| QUERY PLAN                                                                                                                                                                                     |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Limit  (cost=8043.08..8043.11 rows=10 width=88) (actual time=2407.540..2407.548 rows=10 loops=1)                                                                                               |
+|   Buffers: shared hit=15014 read=1303                                                                                                                                                          |
+|   ->  Sort  (cost=8043.08..8084.74 rows=16664 width=88) (actual time=2407.539..2407.544 rows=10 loops=1)                                                                                       |
+|         Sort Key: (count(r.review_internal_id)) DESC                                                                                                                                           |
+|         Sort Method: top-N heapsort  Memory: 26kB                                                                                                                                              |
+|         Buffers: shared hit=15014 read=1303                                                                                                                                                    |
+|         ->  HashAggregate  (cost=7474.68..7682.98 rows=16664 width=88) (actual time=2401.068..2405.534 rows=9042 loops=1)                                                                      |
+|               Group Key: p.product_id                                                                                                                                                          |
+|               Batches: 1  Memory Usage: 2321kB                                                                                                                                                 |
+|               Buffers: shared hit=15011 read=1303                                                                                                                                              |
+|               ->  Hash Join  (cost=3688.42..7349.70 rows=16664 width=60) (actual time=2286.121..2392.196 rows=18109 loops=1)                                                                   |
+|                     Hash Cond: (oi.product_id = p.product_id)                                                                                                                                  |
+|                     Buffers: shared hit=15011 read=1303                                                                                                                                        |
+|                     ->  Hash Join  (cost=2510.02..6127.55 rows=16664 width=45) (actual time=2013.715..2110.764 rows=18109 loops=1)                                                             |
+|                           Hash Cond: (oi.order_id = r.order_id)                                                                                                                                |
+|                           Buffers: shared hit=14574 read=1303                                                                                                                                  |
+|                           ->  Index Only Scan using idx_order_items_product_order on order_items oi  (cost=0.42..3028.87 rows=112650 width=66) (actual time=0.028..65.169 rows=112650 loops=1) |
+|                                 Heap Fetches: 0                                                                                                                                                |
+|                                 Buffers: shared hit=5 read=1197                                                                                                                                |
+|                           ->  Hash  (cost=2327.49..2327.49 rows=14569 width=45) (actual time=2013.620..2013.621 rows=14575 loops=1)                                                            |
+|                                 Buckets: 16384  Batches: 1  Memory Usage: 1224kB                                                                                                               |
+|                                 Buffers: shared hit=14569 read=106                                                                                                                             |
+|                                 ->  Index Scan using idx_reviews_score_order on reviews r  (cost=0.42..2327.49 rows=14569 width=45) (actual time=1.975..2004.485 rows=14575 loops=1)           |
+|                                       Index Cond: (review_score <= 2)                                                                                                                          |
+|                                       Buffers: shared hit=14569 read=106                                                                                                                       |
+|                     ->  Hash  (cost=766.51..766.51 rows=32951 width=48) (actual time=272.231..272.231 rows=32951 loops=1)                                                                      |
+|                           Buckets: 65536  Batches: 1  Memory Usage: 3108kB                                                                                                                     |
+|                           Buffers: shared hit=437                                                                                                                                              |
+|                           ->  Seq Scan on products p  (cost=0.00..766.51 rows=32951 width=48) (actual time=1.275..263.051 rows=32951 loops=1)                                                  |
+|                                 Buffers: shared hit=437                                                                                                                                        |
+| Planning:                                                                                                                                                                                      |
+|   Buffers: shared hit=388 read=1                                                                                                                                                               |
+| Planning Time: 13.232 ms                                                                                                                                                                       |
+| Execution Time: 2408.446 ms                                                                                                                                                                    |

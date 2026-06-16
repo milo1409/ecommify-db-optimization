@@ -841,14 +841,30 @@ postgresql/queries/critical_queries.sql
 | Atlas Metrics                  | `mongodb/evidencias/atlas_metrics/`       |
 | Performance Advisor            | `mongodb/evidencias/performance_advisor/` |
 
-## PostgreSQL
+## Evidencias PostgreSQL
 
-| Evidencia             | Carpeta sugerida                 |
-| --------------------- | -------------------------------- |
-| Tablas creadas        | `postgresql/evidencias/schema/`  |
-| Índices creados       | `postgresql/evidencias/indexes/` |
-| EXPLAIN antes/después | `postgresql/evidencias/explain/` |
-| Gráficas de mejora    | `postgresql/evidencias/charts/`  |
+| Evidencia | Archivo | Descripción |
+|---|---|---|
+| Proyecto Supabase | `postgresql/evidencias/01_Supabase.png` | Evidencia del proyecto creado en Supabase |
+| DDL ejecutado | `postgresql/evidencias/02_schema.png` | Creación del esquema `ecommify` y tablas base |
+| Carga de datos | `postgresql/evidencias/03_import_data.png` | Importación de archivos CSV del dataset Olist |
+| Conteo de registros | `postgresql/evidencias/04_conteos.png` | Validación de registros cargados por tabla |
+| Índices antes de optimizar | `postgresql/evidencias/before_indices.png` | Estado inicial con índices primarios |
+| Script de índices | `postgresql/evidencias/crear_indices.png` | Ejecución de índices optimizados |
+| Índices después de optimizar | `postgresql/evidencias/after_indices.png` | Índices creados para consultas críticas |
+| Particionamiento | `postgresql/evidencias/crear_particiones.png` | Creación de tabla particionada por fecha |
+| Particiones creadas | `postgresql/evidencias/particiones_creadas.png` | Evidencia de particiones por año |
+| Partition pruning | `postgresql/evidencias/query_particionamiento_explain.png` | Consulta filtrada por año usando partición 2018 |
+| EXPLAIN antes - órdenes por cliente | `postgresql/evidencias/reports/before_explain_ordenes_clientes.md` | Plan antes de aplicar índice |
+| EXPLAIN después - órdenes por cliente | `postgresql/evidencias/reports/after_explain_ordenes_clientes.md` | Plan después usando índices |
+| EXPLAIN antes - ventas por categoría y mes | `postgresql/evidencias/reports/before_explain_categoria_mes.md` | Plan antes de aplicar índices |
+| EXPLAIN después - ventas por categoría y mes | `postgresql/evidencias/reports/after_explain_categoria_mes.md` | Plan después usando índice por estado y fecha |
+| EXPLAIN antes - vendedores por región | `postgresql/evidencias/reports/before_explain_vendedores_region.md` | Plan antes de aplicar índices |
+| EXPLAIN después - vendedores por región | `postgresql/evidencias/reports/after_explain_vendedores_region.md` | Plan después usando índice en `order_items` |
+| EXPLAIN antes - reseñas negativas | `postgresql/evidencias/reports/before_explain_reseñas_negativas.md` | Plan antes de aplicar índice |
+| EXPLAIN después - reseñas negativas | `postgresql/evidencias/reports/after_explain_reseñas_negativas.md` | Plan después con índice no productivo |
+| Gráfica de mejora | `postgresql/evidencias/grafica_mejora_postgresql.png` | Comparación porcentual de mejora por consulta |
+| Gráfica de métricas | `postgresql/evidencias/Grafica_Metricas_Rendimiento.png` | Comparación visual de métricas de rendimiento |
 
 ---
 
