@@ -1,0 +1,3 @@
+pipeline,avg_time_ms,nReturned,mejora_vs_original_percent,description
+Pipeline original,959.52,10,0,Pipeline con lookup y unwind para procesar reseñas individualmente
+Pipeline optimizado,362.02,10,62.27,Pipeline con project temprano y size para evitar multiplicación por unwind

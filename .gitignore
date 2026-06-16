@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Variables de entorno
+.env
+
+# Archivos temporales
+*.log
+*.tmp
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Datos sensibles
+credentials.json
+secrets.json

@@ -1,0 +1,8 @@
+coleccion,indice,consulta,nReturned,docs_before,docs_after,keys_after,time_before_ms,time_after_ms,docsPerReturned_before,docsPerReturned_after,resultado,docs_reduction_percent,time_improvement_percent
+product_catalog,idx_pc_esr_category_region_status_rating_price,"Catálogo por categoría, región, estado, rating y precio",1854,32951,1854,1942,30,6,17.77,1.0,Productivo,94.37,80.0
+product_catalog,idx_pc_esr_status_category_units_price,Productos activos más vendidos por categoría y precio,2219,32951,2219,2256,30,7,14.85,1.0,Productivo,93.27,76.67
+product_catalog,idx_pc_partial_active_rating_price,Productos activos con reseñas suficientes,120,32951,120,168,27,1,274.59,1.0,Muy productivo,99.64,96.3
+product_reviews,product_id_1 / idx_pr_product_id,Reseñas por producto,3,102172,3,3,97,1,34057.33,1.0,Muy productivo,100.0,98.97
+product_reviews,idx_pr_rating_created_at,Reseñas negativas recientes,15275,102172,15275,15275,78,74,6.69,1.0,Productivo en documentos examinados,85.05,5.13
+user_behavior,idx_ub_event_type_period,Eventos PURCHASE,112650,112650,112650,112650,176,190,1.0,1.0,Baja productividad,0.0,-7.95
+sellers,idx_sellers_region_city,Vendedores por región y ciudad,41,1849,41,41,2,1,45.1,1.0,Muy productivo,97.78,50.0

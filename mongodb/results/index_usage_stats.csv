@@ -1,0 +1,8 @@
+collection,index_name,access_ops,source
+product_catalog,idx_pc_esr_category_region_status_rating_price,Completar con $indexStats,MongoDB Atlas / notebook
+product_catalog,idx_pc_esr_status_category_units_price,Completar con $indexStats,MongoDB Atlas / notebook
+product_catalog,idx_pc_partial_active_rating_price,Completar con $indexStats,MongoDB Atlas / notebook
+product_reviews,idx_pr_product_id,Completar con $indexStats,MongoDB Atlas / notebook
+product_reviews,idx_pr_rating_created_at,Completar con $indexStats,MongoDB Atlas / notebook
+user_behavior,idx_ub_event_type_period,Completar con $indexStats,MongoDB Atlas / notebook
+sellers,idx_sellers_region_city,Completar con $indexStats,MongoDB Atlas / notebook
