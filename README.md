@@ -158,8 +158,6 @@ ecommify-db-optimization/
 │       ├── atlas_metrics/
 │       ├── performance_advisor/
 │       ├── explain/
-│       ├── pipeline/
-│       └── sharding_replica/
 │
 └── evidencias/
     ├── postgresql/
