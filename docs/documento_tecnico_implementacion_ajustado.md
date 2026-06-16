@@ -563,40 +563,41 @@ En conclusión, la optimización en PostgreSQL debe basarse en evidencia cuantit
 
 ## 3.1 Objetivo de MongoDB dentro de Ecommify
 
-MongoDB se utiliza para administrar información flexible, semiestructurada y de alto volumen. En Ecommify, MongoDB soporta:
+MongoDB fue utilizado como motor documental para almacenar información flexible, semiestructurada y de alto volumen dentro de la arquitectura híbrida de Ecommify.
 
-* Catálogo extendido de productos.
-* Reseñas completas.
-* Vendedores.
-* Comportamiento de usuario.
-* Recomendaciones.
-* Logs de búsqueda.
+Mientras PostgreSQL conserva los datos transaccionales críticos, MongoDB soporta componentes orientados a lectura, analítica y flexibilidad estructural, tales como catálogo extendido, reseñas, comportamiento de usuario, métricas comerciales y recomendaciones.
 
-Para esta implementación se utilizó el dataset Olist Brazilian E-Commerce, descargado con `kagglehub`, y transformado a la estructura documental definida para Ecommify.
+La implementación se realizó en MongoDB Atlas utilizando Google Colab y PyMongo. Como fuente de datos se utilizó el dataset Olist Brazilian E-Commerce, el cual fue transformado desde un modelo relacional hacia un modelo documental adaptado al caso Ecommify.
 
 ---
 
 ## 3.2 Colecciones creadas
 
-| Colección         | Descripción                              |
-| ----------------- | ---------------------------------------- |
-| `product_catalog` | Catálogo extendido de productos          |
-| `product_reviews` | Reseñas completas asociadas a productos  |
-| `sellers`         | Información de vendedores                |
-| `user_behavior`   | Eventos simulados de navegación y compra |
-| `search_logs`     | Colección propuesta para búsquedas       |
-| `recommendations` | Colección propuesta para recomendaciones |
+Durante la implementación se crearon las siguientes colecciones principales:
+
+| Colección         | Descripción                                                                        | Fuente de datos                                       |
+| ----------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `product_catalog` | Catálogo extendido de productos con atributos flexibles, métricas y calificaciones | Productos, sellers, órdenes, items y reseñas de Olist |
+| `product_reviews` | Reseñas completas asociadas a productos                                            | Reseñas y órdenes de Olist                            |
+| `sellers`         | Información de vendedores y ubicación geográfica                                   | Sellers de Olist                                      |
+| `user_behavior`   | Eventos simulados de navegación, carrito y compra                                  | Órdenes, clientes e items de Olist                    |
+| `search_logs`     | Colección propuesta para historial de búsquedas                                    | Diseño teórico                                        |
+| `recommendations` | Colección propuesta para recomendaciones generadas                                 | Diseño teórico                                        |
+
+Las colecciones implementadas permiten representar el catálogo flexible de Ecommify, manteniendo relaciones lógicas mediante identificadores como `product_id`, `seller_id` y `userId`.
 
 ---
 
-## 3.3 Esquema documental `product_catalog`
+## 3.3 Esquema documental de `product_catalog`
+
+La colección `product_catalog` representa el catálogo extendido de productos. Cada documento almacena información común del producto, atributos variables, métricas comerciales y datos precalculados para optimizar consultas de lectura.
 
 Ejemplo de documento:
 
 ```json
 {
   "_id": "product_id",
-  "name": "category product",
+  "name": "bed_bath_table product",
   "description": "Producto importado desde Olist",
   "category": "bed_bath_table",
   "price": 120.5,
@@ -610,7 +611,9 @@ Ejemplo de documento:
     "length_cm": 20,
     "height_cm": 10,
     "width_cm": 15,
-    "photos_qty": 2
+    "photos_qty": 2,
+    "name_length": 40,
+    "description_length": 300
   },
   "tags": [
     "bed_bath_table",
@@ -618,6 +621,7 @@ Ejemplo de documento:
     "ecommify",
     "catalog"
   ],
+  "images": [],
   "ratings": {
     "average": 4.5,
     "count": 10
@@ -628,95 +632,240 @@ Ejemplo de documento:
     "conversion_rate": 0.05,
     "total_revenue": 600.0
   },
+  "recent_reviews": [],
   "source": {
     "dataset": "olistbr/brazilian-ecommerce"
-  }
+  },
+  "created_at": "datetime",
+  "updated_at": "datetime"
 }
 ```
 
----
+### Justificación del diseño
 
-## 3.4 Índices implementados en MongoDB
+El diseño de `product_catalog` combina datos embebidos y datos referenciados.
 
-| Colección         | Índice                                           | Tipo          | Objetivo                                                          |
-| ----------------- | ------------------------------------------------ | ------------- | ----------------------------------------------------------------- |
-| `product_catalog` | `idx_pc_esr_category_region_status_rating_price` | Compuesto ESR | Optimizar catálogo por categoría, región, estado, rating y precio |
-| `product_catalog` | `idx_pc_esr_status_category_units_price`         | Compuesto ESR | Optimizar ranking de productos más vendidos                       |
-| `product_catalog` | `idx_pc_partial_active_rating_price`             | Parcial       | Optimizar productos activos con reseñas suficientes               |
-| `product_catalog` | `idx_pc_text_name_description_tags`              | Texto         | Habilitar búsqueda full-text                                      |
-| `product_reviews` | `product_id_1` / `idx_pr_product_id`             | Simple        | Optimizar reseñas por producto y `$lookup`                        |
-| `product_reviews` | `idx_pr_rating_created_at`                       | Compuesto     | Optimizar análisis de reseñas negativas recientes                 |
-| `user_behavior`   | `idx_ub_user_period`                             | Compuesto     | Optimizar eventos por usuario y periodo                           |
-| `user_behavior`   | `idx_ub_event_type_period`                       | Multikey      | Optimizar eventos por tipo                                        |
-| `sellers`         | `idx_sellers_region_city`                        | Compuesto     | Optimizar análisis geográfico                                     |
+Se embeben campos consultados frecuentemente, como:
 
----
+* `attributes`
+* `tags`
+* `ratings`
+* `metrics`
+* `seller_region`
+* `seller_city`
 
-## 3.5 Evidencias cuantitativas de índices MongoDB
+Se referencian entidades de alto crecimiento, como reseñas completas y eventos de comportamiento, mediante colecciones separadas como `product_reviews` y `user_behavior`.
 
-| Colección         | Índice evaluado                                  | Consulta                                                | Docs antes | Docs después | Tiempo antes | Tiempo después | Resultado                           |
-| ----------------- | ------------------------------------------------ | ------------------------------------------------------- | ---------: | -----------: | -----------: | -------------: | ----------------------------------- |
-| `product_catalog` | `idx_pc_esr_category_region_status_rating_price` | Catálogo por categoría, región, estado, rating y precio |     32.951 |        1.854 |        30 ms |           6 ms | Productivo                          |
-| `product_catalog` | `idx_pc_esr_status_category_units_price`         | Productos activos más vendidos                          |     32.951 |        2.219 |        30 ms |           7 ms | Productivo                          |
-| `product_catalog` | `idx_pc_partial_active_rating_price`             | Productos activos con reseñas suficientes               |     32.951 |          120 |        27 ms |           1 ms | Muy productivo                      |
-| `product_reviews` | `product_id_1`                                   | Reseñas por producto                                    |    102.172 |            3 |        97 ms |           1 ms | Muy productivo                      |
-| `product_reviews` | `idx_pr_rating_created_at`                       | Reseñas negativas recientes                             |    102.172 |       15.275 |        78 ms |          74 ms | Productivo en documentos examinados |
-| `user_behavior`   | `idx_ub_event_type_period`                       | Eventos PURCHASE                                        |    112.650 |      112.650 |       176 ms |         190 ms | Baja productividad                  |
-| `sellers`         | `idx_sellers_region_city`                        | Vendedores por región y ciudad                          |      1.849 |           41 |         2 ms |           1 ms | Muy productivo                      |
+Este enfoque permite mejorar el rendimiento de lectura sin generar documentos excesivamente grandes.
 
 ---
 
-## 3.6 Interpretación de resultados MongoDB
+## 3.4 Esquema documental de `product_reviews`
 
-La evaluación con `.explain("executionStats")` permitió identificar qué índices fueron realmente productivos.
+La colección `product_reviews` almacena las reseñas completas de productos. Se relaciona con `product_catalog` mediante el campo `product_id`.
 
-En `product_catalog`, los índices ESR redujeron de forma importante los documentos examinados. El índice principal del catálogo pasó de 32.951 documentos examinados a 1.854, reduciendo el tiempo de ejecución de 30 ms a 6 ms. El índice parcial fue el más eficiente, al reducir de 32.951 documentos examinados a solo 120.
+Ejemplo de documento:
 
-En `product_reviews`, el índice por `product_id` fue altamente productivo porque redujo una consulta de 102.172 documentos examinados a solo 3 documentos. Este índice es fundamental para consultas de reseñas por producto y para operaciones `$lookup`.
+```json
+{
+  "_id": "review_id_product_id",
+  "review_id": "review_id",
+  "product_id": "product_id",
+  "order_id": "order_id",
+  "rating": 5,
+  "comment_title": "Buen producto",
+  "comment_message": "El producto cumple con lo esperado",
+  "verified_purchase": true,
+  "created_at": "datetime"
+}
+```
 
-En `user_behavior`, el índice sobre `events.type` no mostró mejora para eventos `PURCHASE`, debido a que este evento aparece en una proporción muy alta de documentos. Esto evidencia que no todo índice es productivo si el campo tiene baja selectividad.
+### Justificación
 
-En `sellers`, el índice compuesto por región y ciudad fue eficiente, reduciendo los documentos examinados de 1.849 a 41.
-
----
-
-## 3.7 Aggregation pipeline optimizado
-
-Se desarrolló un pipeline analítico sobre `product_catalog` y `product_reviews` para evaluar desempeño comercial por categoría y región.
-
-El pipeline incluye:
-
-* `$match`
-* `$lookup`
-* `$unwind`, en versión original
-* `$group`
-* `$addFields`
-* `$project`
-* `$sort`
-* `$limit`
-
-La versión optimizada aplicó:
-
-* `$match` temprano.
-* `$project` temprano.
-* Uso de índices.
-* Reemplazo de `$unwind` por `$size` para conteo de reseñas.
-* `allowDiskUse=True`.
-
-Resultados:
-
-| Pipeline            | Tiempo promedio | Documentos retornados | Mejora |
-| ------------------- | --------------: | --------------------: | -----: |
-| Pipeline original   |       959.52 ms |                    10 |     0% |
-| Pipeline optimizado |       362.02 ms |                    10 | 62.27% |
-
-La optimización redujo el tiempo promedio de ejecución en 62.27%, principalmente por la reducción de documentos intermedios y la proyección temprana de campos.
+Las reseñas pueden crecer de forma considerable para productos populares. Por esta razón, no se almacenan todas dentro de `product_catalog`. En su lugar, se utiliza una colección separada con índice sobre `product_id`, permitiendo consultar reseñas completas cuando sea necesario.
 
 ---
 
-## 3.8 Diseño teórico de sharding y replica sets
+## 3.5 Esquema documental de `sellers`
 
-Para `product_catalog` se propone la siguiente shard key:
+La colección `sellers` almacena información de vendedores.
+
+Ejemplo de documento:
+
+```json
+{
+  "_id": "seller_id",
+  "seller_id": "seller_id",
+  "city": "sao paulo",
+  "region": "SP",
+  "country": "BR"
+}
+```
+
+Esta colección permite realizar análisis geográficos y segmentación de vendedores por región y ciudad.
+
+---
+
+## 3.6 Esquema documental de `user_behavior`
+
+La colección `user_behavior` almacena eventos de comportamiento agrupados por usuario y periodo. Esta estructura aplica el Bucket Pattern, ya que agrupa eventos históricos para reducir el crecimiento descontrolado de documentos individuales.
+
+Ejemplo de documento:
+
+```json
+{
+  "_id": "user_period",
+  "userId": "customer_id",
+  "period": "2018-05",
+  "events": [
+    {
+      "type": "VIEW_PRODUCT",
+      "productId": "product_id",
+      "timestamp": "datetime"
+    },
+    {
+      "type": "ADD_TO_CART",
+      "productId": "product_id",
+      "timestamp": "datetime"
+    },
+    {
+      "type": "PURCHASE",
+      "productId": "product_id",
+      "timestamp": "datetime"
+    }
+  ]
+}
+```
+
+### Justificación
+
+El comportamiento de usuario tiene alto volumen y crecimiento continuo. Agrupar eventos por usuario y periodo permite manejar mejor la escritura y facilita análisis por ventanas temporales.
+
+---
+
+## 3.7 Patrones de modelado aplicados
+
+| Patrón                | Aplicación en Ecommify                                                                  | Justificación                                                       |
+| --------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Computed Pattern      | `ratings.average`, `ratings.count`, `metrics.total_units_sold`, `metrics.total_revenue` | Evita recalcular métricas en cada consulta                          |
+| Subset Pattern        | `recent_reviews` dentro de `product_catalog`                                            | Permite mostrar reseñas destacadas sin traer todo el historial      |
+| Approximation Pattern | `views_count`, `conversion_rate`                                                        | Reduce escrituras frecuentes sobre métricas de alta actividad       |
+| Polymorphic Pattern   | `attributes` variable por categoría                                                     | Permite productos con estructuras diferentes en una misma colección |
+| Bucket Pattern        | `user_behavior` agrupado por usuario y periodo                                          | Organiza eventos históricos de alto volumen                         |
+
+---
+
+## 3.8 Índices implementados con justificación
+
+La estrategia de indexación se diseñó a partir de los patrones de consulta del catálogo, reseñas, comportamiento de usuario y análisis geográfico.
+
+| Colección         | Índice                                           | Tipo               | Justificación                                                                               |
+| ----------------- | ------------------------------------------------ | ------------------ | ------------------------------------------------------------------------------------------- |
+| `product_catalog` | `idx_pc_esr_category_region_status_rating_price` | Compuesto ESR      | Optimiza consultas por categoría, región, estado, ordenamiento por rating y rango de precio |
+| `product_catalog` | `idx_pc_esr_status_category_units_price`         | Compuesto ESR      | Optimiza ranking de productos activos más vendidos                                          |
+| `product_catalog` | `idx_pc_partial_active_rating_price`             | Parcial            | Reduce el índice a productos activos con suficientes reseñas                                |
+| `product_catalog` | `idx_pc_text_name_description_tags`              | Texto              | Permite búsqueda full-text por nombre, descripción y etiquetas                              |
+| `product_reviews` | `product_id_1` / `idx_pr_product_id`             | Simple             | Optimiza consulta de reseñas por producto y operaciones `$lookup`                           |
+| `product_reviews` | `idx_pr_partial_verified_product_rating`         | Parcial            | Optimiza reseñas verificadas por producto y calificación                                    |
+| `product_reviews` | `idx_pr_rating_created_at`                       | Compuesto          | Optimiza análisis de reseñas negativas recientes                                            |
+| `user_behavior`   | `idx_ub_user_period`                             | Compuesto          | Optimiza consultas de comportamiento por usuario y periodo                                  |
+| `user_behavior`   | `idx_ub_event_type_period`                       | Multikey compuesto | Permite analizar eventos por tipo y periodo                                                 |
+| `sellers`         | `idx_sellers_region`                             | Simple             | Optimiza filtros por región                                                                 |
+| `sellers`         | `idx_sellers_region_city`                        | Compuesto          | Optimiza análisis jerárquico por región y ciudad                                            |
+
+---
+
+## 3.9 Evidencias de mejora con `.explain("executionStats")`
+
+La evaluación de índices se realizó con `.explain("executionStats")`, comparando las métricas principales antes y después de aplicar índices.
+
+Las métricas utilizadas fueron:
+
+| Métrica               | Descripción                                       |
+| --------------------- | ------------------------------------------------- |
+| `nReturned`           | Cantidad de documentos retornados                 |
+| `totalDocsExamined`   | Cantidad de documentos examinados                 |
+| `totalKeysExamined`   | Cantidad de claves de índice examinadas           |
+| `executionTimeMillis` | Tiempo de ejecución en milisegundos               |
+| `docsPerReturned`     | Relación entre documentos examinados y retornados |
+
+### Resultados principales
+
+| Colección         | Índice evaluado                                  | Consulta evaluada                                       | Docs examinados antes | Docs examinados después | Tiempo antes | Tiempo después | Resultado                           |
+| ----------------- | ------------------------------------------------ | ------------------------------------------------------- | --------------------: | ----------------------: | -----------: | -------------: | ----------------------------------- |
+| `product_catalog` | `idx_pc_esr_category_region_status_rating_price` | Catálogo por categoría, región, estado, rating y precio |                32.951 |                   1.854 |        30 ms |           6 ms | Productivo                          |
+| `product_catalog` | `idx_pc_esr_status_category_units_price`         | Productos activos más vendidos por categoría y precio   |                32.951 |                   2.219 |        30 ms |           7 ms | Productivo                          |
+| `product_catalog` | `idx_pc_partial_active_rating_price`             | Productos activos con reseñas suficientes               |                32.951 |                     120 |        27 ms |           1 ms | Muy productivo                      |
+| `product_reviews` | `product_id_1` / `idx_pr_product_id`             | Reseñas por producto                                    |               102.172 |                       3 |        97 ms |           1 ms | Muy productivo                      |
+| `product_reviews` | `idx_pr_rating_created_at`                       | Reseñas negativas recientes                             |               102.172 |                  15.275 |        78 ms |          74 ms | Productivo en documentos examinados |
+| `user_behavior`   | `idx_ub_event_type_period`                       | Eventos `PURCHASE`                                      |               112.650 |                 112.650 |       176 ms |         190 ms | Baja productividad                  |
+| `sellers`         | `idx_sellers_region_city`                        | Vendedores por región y ciudad                          |                 1.849 |                      41 |         2 ms |           1 ms | Muy productivo                      |
+
+### Interpretación
+
+Los índices más productivos fueron los asociados a consultas selectivas.
+
+En `product_catalog`, el índice ESR principal redujo los documentos examinados de 32.951 a 1.854, disminuyendo el tiempo de 30 ms a 6 ms. El índice parcial fue aún más eficiente, al reducir los documentos examinados de 32.951 a 120.
+
+En `product_reviews`, el índice por `product_id` fue fundamental. La consulta pasó de examinar 102.172 documentos a solo 3, reduciendo el tiempo de 97 ms a 1 ms.
+
+En `user_behavior`, el índice sobre `events.type` no presentó mejora porque el evento `PURCHASE` aparece en una proporción muy alta de documentos. Esto evidencia que la selectividad del campo es determinante para que un índice sea productivo.
+
+En `sellers`, el índice compuesto por región y ciudad redujo los documentos examinados de 1.849 a 41.
+
+---
+
+## 3.10 Aggregation pipeline optimizado
+
+Se desarrolló un pipeline complejo sobre `product_catalog` y `product_reviews` para analizar el desempeño comercial de productos agrupados por categoría y región del vendedor.
+
+El pipeline cumple con la complejidad mínima requerida, ya que incluye más de cinco stages y utiliza filtrado, relación entre colecciones, agrupación, transformación, proyección y ordenamiento.
+
+### Stages utilizados
+
+| Stage        | Uso                                                                     |
+| ------------ | ----------------------------------------------------------------------- |
+| `$match`     | Filtra productos activos por categoría y rango de precio                |
+| `$lookup`    | Relaciona `product_catalog` con `product_reviews` mediante `product_id` |
+| `$unwind`    | Utilizado en la versión original para procesar reseñas individualmente  |
+| `$group`     | Agrupa por categoría y región del vendedor                              |
+| `$addFields` | Calcula el indicador `sales_score`                                      |
+| `$project`   | Reduce y transforma los campos de salida                                |
+| `$sort`      | Ordena los resultados por `sales_score`                                 |
+| `$limit`     | Limita la salida a los 10 mejores resultados                            |
+
+### Técnicas de optimización aplicadas
+
+Las optimizaciones aplicadas fueron:
+
+1. Ubicación de `$match` al inicio del pipeline.
+2. Uso de índices sobre campos filtrados y relacionados.
+3. Proyección temprana mediante `$project`.
+4. Reemplazo de `$unwind` por `$size` para contar reseñas sin multiplicar documentos.
+5. Configuración de `allowDiskUse=True`.
+
+### Resultado de la medición
+
+| Pipeline            | Tiempo promedio | Documentos retornados | Mejora vs original |
+| ------------------- | --------------: | --------------------: | -----------------: |
+| Pipeline original   |       959.52 ms |                    10 |                 0% |
+| Pipeline optimizado |       362.02 ms |                    10 |             62.27% |
+
+### Interpretación
+
+El pipeline optimizado redujo el tiempo promedio de ejecución de 959.52 ms a 362.02 ms, obteniendo una mejora de 62.27%.
+
+La mejora se explica por la reducción del volumen de datos procesado en etapas intermedias. Al aplicar `$project` inmediatamente después de `$match`, el pipeline conserva únicamente los campos necesarios. Además, el uso de `$size` sobre el arreglo `reviews` evita la multiplicación de documentos generada por `$unwind`.
+
+---
+
+## 3.11 Diseño teórico de sharding
+
+El diseño de sharding se documenta de forma teórica debido a que el ambiente utilizado corresponde a MongoDB Atlas Free Tier. Este entorno permite validar consultas, índices y pipelines, pero no permite implementar un sharded cluster real.
+
+### Shard key final para `product_catalog`
+
+Para la colección `product_catalog` se propone la siguiente shard key compuesta:
 
 ```javascript
 {
@@ -726,13 +875,19 @@ Para `product_catalog` se propone la siguiente shard key:
 }
 ```
 
-Justificación:
+### Justificación
 
-* `category` optimiza consultas frecuentes del catálogo.
-* `seller_region` permite segmentación geográfica.
-* `_id hashed` mejora distribución entre shards.
+| Campo           | Justificación                                                  |
+| --------------- | -------------------------------------------------------------- |
+| `category`      | Optimiza consultas frecuentes por categoría de producto        |
+| `seller_region` | Permite segmentación y análisis regional                       |
+| `_id hashed`    | Mejora la distribución uniforme entre shards y reduce hotspots |
 
-Comandos teóricos:
+Esta shard key busca balancear eficiencia de consulta y distribución de datos. Usar únicamente `category` podría generar concentración en categorías populares. Usar únicamente `_id hashed` distribuiría bien los documentos, pero no favorecería consultas frecuentes del catálogo. Por esta razón se selecciona una clave compuesta.
+
+### Configuración teórica
+
+En un ambiente productivo, la configuración se realizaría así:
 
 ```javascript
 sh.enableSharding("ecommify_db")
@@ -753,170 +908,385 @@ sh.shardCollection(
 )
 ```
 
-Debido a las limitaciones del Free Tier, estos comandos no fueron ejecutados; se documentan como diseño teórico.
+Estos comandos no se ejecutaron en el cluster gratuito. Se documentan como referencia para una arquitectura productiva.
 
-Replica set propuesto:
+### Sharding propuesto para otras colecciones
 
-| Nodo          | Rol       | Zona | Función                          |
-| ------------- | --------- | ---- | -------------------------------- |
-| `mongo-rs-01` | Primary   | AZ-1 | Recibe escrituras                |
-| `mongo-rs-02` | Secondary | AZ-2 | Replica datos y atiende lecturas |
-| `mongo-rs-03` | Secondary | AZ-3 | Replica datos y permite failover |
+| Colección         | Shard key propuesta                                | Justificación                                                   |
+| ----------------- | -------------------------------------------------- | --------------------------------------------------------------- |
+| `product_catalog` | `{ category: 1, seller_region: 1, _id: "hashed" }` | Balance entre consultas de catálogo y distribución              |
+| `product_reviews` | `{ product_id: "hashed" }`                         | Distribuye reseñas y evita concentración en productos populares |
+| `user_behavior`   | `{ userId: "hashed", period: 1 }`                  | Distribuye usuarios y organiza eventos por periodo              |
+| `search_logs`     | `{ created_at: 1, _id: "hashed" }`                 | Permite consultas temporales y distribución uniforme            |
+| `recommendations` | `{ user_id: "hashed" }`                            | Optimiza recomendaciones por usuario                            |
+
+---
+
+## 3.12 Diseño teórico de replica sets
+
+Se propone un replica set de tres nodos distribuidos en diferentes zonas de disponibilidad.
+
+| Nodo          | Rol       | Zona | Función                                      |
+| ------------- | --------- | ---- | -------------------------------------------- |
+| `mongo-rs-01` | Primary   | AZ-1 | Recibe escrituras                            |
+| `mongo-rs-02` | Secondary | AZ-2 | Replica datos y atiende lecturas no críticas |
+| `mongo-rs-03` | Secondary | AZ-3 | Replica datos y permite failover             |
+
+Esta configuración permite alta disponibilidad. Si el nodo Primary falla, los nodos Secondary pueden elegir automáticamente un nuevo Primary.
+
+No se recomienda utilizar Arbiter para esta arquitectura, ya que un Arbiter participa en elecciones pero no almacena datos. Para Ecommify es preferible contar con tres nodos completos con datos replicados.
 
 ---
 
-## 3.9 Estrategias Read/Write Concern
+## 3.13 Read Preference y Write Concern
 
-| Operación                | Colección         | Read Preference      | Write Concern | Justificación                      |
-| ------------------------ | ----------------- | -------------------- | ------------- | ---------------------------------- |
-| Consulta catálogo        | `product_catalog` | `secondaryPreferred` | No aplica     | Reduce carga del Primary           |
-| Crear producto           | `product_catalog` | `primary`            | `majority`    | Requiere durabilidad               |
-| Actualizar precio        | `product_catalog` | `primary`            | `majority`    | Dato sensible                      |
-| Registrar reseña         | `product_reviews` | `primary`            | `majority`    | Visible para usuarios              |
-| Consultar reseñas        | `product_reviews` | `secondaryPreferred` | No aplica     | Tolera consistencia eventual       |
-| Registrar navegación     | `user_behavior`   | No aplica            | `w:1`         | Evento masivo                      |
-| Analítica comportamiento | `user_behavior`   | `secondary`          | No aplica     | No requiere consistencia inmediata |
-| Recomendaciones          | `recommendations` | `secondary`          | `w:1`         | Reprocesable                       |
+Las estrategias de lectura y escritura se diferencian según la criticidad de cada operación.
+
+| Operación                    | Colección         | Read Preference      | Write Concern | Justificación                      |
+| ---------------------------- | ----------------- | -------------------- | ------------- | ---------------------------------- |
+| Consulta general de catálogo | `product_catalog` | `secondaryPreferred` | No aplica     | Reduce carga del Primary           |
+| Detalle de producto          | `product_catalog` | `secondaryPreferred` | No aplica     | Tolera una pequeña demora          |
+| Creación de producto         | `product_catalog` | `primary`            | `majority`    | Requiere durabilidad               |
+| Actualización de precio      | `product_catalog` | `primary`            | `majority`    | Dato sensible para negocio         |
+| Actualización de métricas    | `product_catalog` | `secondaryPreferred` | `w:1`         | Métricas reprocesables             |
+| Registro de reseña           | `product_reviews` | `primary`            | `majority`    | Información visible para usuarios  |
+| Consulta de reseñas          | `product_reviews` | `secondaryPreferred` | No aplica     | Tolera consistencia eventual       |
+| Evento de navegación         | `user_behavior`   | No aplica            | `w:1`         | Evento masivo y reprocesable       |
+| Analítica de comportamiento  | `user_behavior`   | `secondary`          | No aplica     | No requiere consistencia inmediata |
+| Recomendaciones              | `recommendations` | `secondary`          | `w:1`         | Puede recalcularse                 |
+| Logs de búsqueda             | `search_logs`     | `secondary`          | `w:1`         | Dato analítico de alto volumen     |
 
 ---
+
+## 3.14 Evidencias y archivos del repositorio
+
+Las evidencias de MongoDB se encuentran asociadas al README y al notebook de optimización.
+
+| Evidencia                         | Ubicación sugerida                                 |
+| --------------------------------- | -------------------------------------------------- |
+| Notebook documentado              | `mongodb/notebooks/Mongodb_ecommify_U5_Act1.ipynb` |
+| README técnico MongoDB            | `mongodb/README.md` o `README.md`                  |
+| Resultados de índices             | `mongodb/results/index_productivity_results.csv`   |
+| Resultados de pipeline            | `mongodb/results/pipeline_results.csv`             |
+| Capturas de `.explain()`          | `mongodb/evidencias/explain/`                      |
+| Capturas de pipeline              | `mongodb/evidencias/pipeline/`                     |
+| Evidencias de Atlas Metrics       | `mongodb/evidencias/atlas_metrics/`                |
+| Evidencias de Performance Advisor | `mongodb/evidencias/performance_advisor/`          |
+
+---
+
+## 3.15 Conclusión de la implementación MongoDB
+
+La implementación MongoDB permitió construir un modelo documental flexible y optimizado para el catálogo extendido de Ecommify.
+
+Los índices compuestos ESR, índices parciales e índices de relación redujeron de forma significativa los documentos examinados en consultas críticas. El índice por `product_id` en `product_reviews` fue uno de los más importantes, ya que permitió optimizar consultas de reseñas por producto y operaciones `$lookup`.
+
+El pipeline analítico optimizado redujo el tiempo promedio de ejecución en 62.27%, demostrando la importancia del orden de stages, la proyección temprana y la reducción de documentos intermedios.
+
+También se evidenció que no todos los índices son productivos. El índice sobre `events.type` en `user_behavior` presentó baja productividad debido a la baja selectividad del evento `PURCHASE`.
+
+Finalmente, el diseño teórico de sharding y replica sets proporciona una base para escalar la solución hacia un ambiente productivo, considerando distribución de datos, alta disponibilidad, consistencia eventual y separación de operaciones críticas y analíticas.
+
 
 # 4. Evidencias cuantitativas de mejoras de rendimiento
 
-## 4.1 Evidencias MongoDB
+Esta sección consolida las evidencias cuantitativas obtenidas durante la optimización de PostgreSQL y MongoDB. El objetivo es comparar el comportamiento antes y después de aplicar índices, optimización de consultas, optimización de pipelines y particionamiento.
 
-Las métricas principales utilizadas fueron:
+---
 
-* `nReturned`
-* `totalDocsExamined`
-* `totalKeysExamined`
-* `executionTimeMillis`
-* `docsPerReturned`
-* tiempo promedio de pipeline
+## 4.1 Evidencias cuantitativas PostgreSQL
 
-Los resultados demuestran que las optimizaciones redujeron documentos examinados y mejoraron tiempos de ejecución en consultas críticas.
+En PostgreSQL se evaluaron consultas críticas mediante `EXPLAIN (ANALYZE, BUFFERS)`. Las métricas principales analizadas fueron:
 
-## 4.2 Evidencias PostgreSQL
+| Métrica           | Descripción                                  |
+| ----------------- | -------------------------------------------- |
+| `Execution Time`  | Tiempo total de ejecución de la consulta     |
+| `Planning Time`   | Tiempo requerido para planificar la consulta |
+| `Seq Scan`        | Escaneo secuencial de tabla                  |
+| `Index Scan`      | Acceso mediante índice                       |
+| `Index Only Scan` | Acceso usando únicamente el índice           |
+| `Hash Join`       | Estrategia de join utilizada por PostgreSQL  |
+| `Buffers`         | Bloques leídos o encontrados en memoria      |
 
-En PostgreSQL se utilizaron métricas obtenidas mediante `EXPLAIN (ANALYZE, BUFFERS)`. Las métricas principales fueron:
+Las consultas evaluadas fueron:
 
-* Tiempo de ejecución.
-* Tipo de scan utilizado.
-* Uso de índices.
-* Buffers utilizados.
-* Filas procesadas.
-* Cambios en el plan de ejecución antes y después de aplicar índices.
+1. Historial de órdenes por cliente.
+2. Ventas por categoría y mes.
+3. Desempeño de vendedores por región.
+4. Productos con reseñas negativas.
+5. Consulta sobre tabla particionada por año.
 
-Los resultados consolidados fueron:
+---
 
-| Query crítica | Tiempo antes | Tiempo después | Mejora | Interpretación |
-|---|---:|---:|---:|---|
-| Historial de órdenes por cliente | 15.442 ms | 9.210 ms | 40.36% | Mejora por uso de índice sobre `customer_id` y fecha |
-| Ventas por categoría y mes | 1902.142 ms | 395.193 ms | 79.22% | Mejora significativa por índice sobre estado y fecha de orden |
-| Desempeño de vendedores por región | 424.708 ms | 397.821 ms | 6.33% | Mejora leve por uso de índice en `order_items` |
-| Productos con reseñas negativas | 912.709 ms | 2408.446 ms | -163.87% | Índice no productivo por baja selectividad |
-| Órdenes particionadas por año | N/A | 26.825 ms | N/A | Evidencia de partition pruning sobre `orders_2018` |
+## 4.2 Tabla comparativa PostgreSQL
 
-La consulta de ventas por categoría y mes presentó la mejora más representativa, reduciendo su tiempo de ejecución de 1902.142 ms a 395.193 ms. Este resultado se explica por el uso del índice `idx_orders_status_purchase_date`, el cual permite filtrar de forma más eficiente las órdenes entregadas dentro del rango de fechas analizado.
+| Query crítica                    | Tiempo antes | Tiempo después |   Mejora | Plan antes                                                | Plan después                                             | Interpretación                                             |
+| -------------------------------- | -----------: | -------------: | -------: | --------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------- |
+| Historial de órdenes por cliente |    15.442 ms |       9.210 ms |   40.36% | `Seq Scan` sobre `orders` + `Index Scan` en `order_items` | `Index Scan` en `orders` + `Index Scan` en `order_items` | Mejora por uso de índice sobre `customer_id` y fecha       |
+| Ventas por categoría y mes       |  1902.142 ms |     395.193 ms |   79.22% | `Parallel Seq Scan` + `Hash Join`                         | `Index Scan` sobre `orders` + `Hash Join`                | Mejora significativa por filtro indexado de estado y fecha |
+| Desempeño vendedores por región  |   424.708 ms |     397.821 ms |    6.33% | `Seq Scan` + `Hash Join`                                  | `Index Only Scan` en `order_items` + `Hash Join`         | Mejora leve porque aún se procesan muchos registros        |
+| Productos con reseñas negativas  |   912.709 ms |    2408.446 ms | -163.87% | `Seq Scan` + `Hash Join`                                  | `Index Scan` + `Index Only Scan`                         | El índice no fue productivo por baja selectividad          |
+| Órdenes particionadas por año    |          N/A |      26.825 ms |      N/A | N/A                                                       | `Index Only Scan` sobre partición `orders_2018`          | Evidencia de `partition pruning`                           |
 
-La consulta de historial de órdenes por cliente también mejoró, pasando de 15.442 ms a 9.210 ms. El plan optimizado utilizó el índice `idx_orders_customer_purchase_date` sobre la tabla `orders` y el índice `idx_order_items_order_id` sobre `order_items`.
+---
 
-La consulta de desempeño de vendedores por región tuvo una mejora leve. Aunque el plan optimizado utilizó `Index Only Scan` sobre `order_items`, la consulta continuó procesando un volumen alto de registros y mantuvo operaciones de tipo `Hash Join`.
+## 4.3 Interpretación PostgreSQL
 
-La consulta de productos con reseñas negativas no mejoró. El índice `idx_reviews_score_order` produjo un tiempo mayor que el plan original. Esto evidencia que el filtro `review_score <= 2` tiene baja selectividad y retorna un volumen considerable de registros, por lo cual el índice no fue conveniente para ese patrón de consulta.
+La consulta de historial de órdenes por cliente presentó una mejora del **40.36%**, pasando de **15.442 ms** a **9.210 ms**. Esta mejora se obtuvo porque PostgreSQL dejó de realizar un escaneo secuencial sobre la tabla `orders` y utilizó el índice `idx_orders_customer_purchase_date`.
 
-El particionamiento por rango permitió validar `partition pruning`. La consulta sobre órdenes del año 2018 utilizó un `Index Only Scan` sobre la partición `orders_2018`, con un tiempo de ejecución de 26.825 ms.
+La consulta de ventas por categoría y mes presentó la mejora más significativa, con una reducción de **1902.142 ms** a **395.193 ms**, equivalente a una mejora de **79.22%**. Esta optimización se logró por el uso del índice `idx_orders_status_purchase_date`, que permite filtrar órdenes entregadas dentro de un rango de fechas.
 
-Los resultados de PostgreSQL se encuentran en:
+La consulta de desempeño de vendedores por región mostró una mejora menor, pasando de **424.708 ms** a **397.821 ms**, equivalente a **6.33%**. Aunque el plan optimizado utilizó `Index Only Scan`, la consulta todavía procesa un volumen alto de registros y mantiene operaciones costosas como `Hash Join` y ordenamientos externos.
+
+La consulta de productos con reseñas negativas no presentó mejora. El tiempo aumentó de **912.709 ms** a **2408.446 ms**. Este resultado evidencia que el índice `idx_reviews_score_order` no fue productivo para este patrón específico, debido a que el filtro `review_score <= 2` retorna una cantidad considerable de registros. Esto demuestra que un índice no siempre mejora el rendimiento si el campo tiene baja selectividad.
+
+El particionamiento por fecha permitió evidenciar `partition pruning`. La consulta sobre el año 2018 utilizó un `Index Only Scan` sobre la partición `orders_2018`, con un tiempo de ejecución de **26.825 ms**. Esto demuestra que PostgreSQL puede reducir el volumen de datos evaluado cuando la condición de filtro coincide con la clave de particionamiento.
+
+---
+
+## 4.4 Gráficas de mejora PostgreSQL
+
+Las gráficas de mejora se almacenaron en la carpeta de evidencias del repositorio:
 
 ```text
-postgresql/results/postgresql_preformance_results.csv
+postgresql/evidencias/grafica_mejora_postgresql.png
+postgresql/evidencias/Grafica_Metricas_Rendimiento.png
 ```
 
-Las evidencias se encuentran en:
+Estas gráficas permiten visualizar la diferencia porcentual de rendimiento entre las consultas ejecutadas antes y después de aplicar índices.
 
-```text
-postgresql/evidencias/
-postgresql/evidencias/reports/
-```
+La gráfica de mejora muestra que las mayores optimizaciones se obtuvieron en:
 
+* Ventas por categoría y mes: **79.22%**
+* Historial de órdenes por cliente: **40.36%**
+* Desempeño de vendedores por región: **6.33%**
+
+También se evidencia un caso negativo:
+
+* Productos con reseñas negativas: **-163.87%**
+
+Este resultado negativo se conserva dentro del análisis porque representa una conclusión técnica relevante: la creación de índices debe validarse con planes de ejecución reales y no asumirse como una mejora automática.
+
+---
+
+## 4.5 Evidencias cuantitativas MongoDB
+
+En MongoDB se evaluaron consultas críticas mediante `.explain("executionStats")`. Las métricas principales utilizadas fueron:
+
+| Métrica               | Descripción                                                  |
+| --------------------- | ------------------------------------------------------------ |
+| `nReturned`           | Documentos retornados por la consulta                        |
+| `totalDocsExamined`   | Documentos examinados por MongoDB                            |
+| `totalKeysExamined`   | Claves de índice examinadas                                  |
+| `executionTimeMillis` | Tiempo de ejecución en milisegundos                          |
+| `docsPerReturned`     | Relación entre documentos examinados y documentos retornados |
+| `keysPerReturned`     | Relación entre claves examinadas y documentos retornados     |
+
+La métrica `docsPerReturned` se utilizó como indicador de eficiencia. Un valor cercano a **1** indica que MongoDB examina aproximadamente un documento por cada documento retornado, lo cual representa una consulta eficiente.
+
+---
+
+## 4.6 Tabla comparativa MongoDB
+
+| Colección         | Índice evaluado                                  | Consulta evaluada                                       | Docs antes | Docs después | Tiempo antes | Tiempo después | Efficiency ratio antes | Efficiency ratio después | Resultado                           |
+| ----------------- | ------------------------------------------------ | ------------------------------------------------------- | ---------: | -----------: | -----------: | -------------: | ---------------------: | -----------------------: | ----------------------------------- |
+| `product_catalog` | `idx_pc_esr_category_region_status_rating_price` | Catálogo por categoría, región, estado, rating y precio |     32.951 |        1.854 |        30 ms |           6 ms |                  17.77 |                     1.00 | Productivo                          |
+| `product_catalog` | `idx_pc_esr_status_category_units_price`         | Productos activos más vendidos                          |     32.951 |        2.219 |        30 ms |           7 ms |                  14.85 |                     1.00 | Productivo                          |
+| `product_catalog` | `idx_pc_partial_active_rating_price`             | Productos activos con reseñas suficientes               |     32.951 |          120 |        27 ms |           1 ms |                 274.59 |                     1.00 | Muy productivo                      |
+| `product_reviews` | `product_id_1` / `idx_pr_product_id`             | Reseñas por producto                                    |    102.172 |            3 |        97 ms |           1 ms |               34057.33 |                     1.00 | Muy productivo                      |
+| `product_reviews` | `idx_pr_rating_created_at`                       | Reseñas negativas recientes                             |    102.172 |       15.275 |        78 ms |          74 ms |                   6.69 |                     1.00 | Productivo en documentos examinados |
+| `user_behavior`   | `idx_ub_event_type_period`                       | Eventos `PURCHASE`                                      |    112.650 |      112.650 |       176 ms |         190 ms |                   1.00 |                     1.00 | Baja productividad                  |
+| `sellers`         | `idx_sellers_region_city`                        | Vendedores por región y ciudad                          |      1.849 |           41 |         2 ms |           1 ms |                  45.10 |                     1.00 | Muy productivo                      |
+
+---
+
+## 4.7 Interpretación MongoDB
+
+En `product_catalog`, los índices compuestos basados en la regla ESR demostraron mejoras claras. El índice `idx_pc_esr_category_region_status_rating_price` redujo los documentos examinados de **32.951** a **1.854** y el tiempo de ejecución de **30 ms** a **6 ms**.
+
+El índice `idx_pc_esr_status_category_units_price` también fue productivo, reduciendo documentos examinados de **32.951** a **2.219** y el tiempo de **30 ms** a **7 ms**.
+
+El índice parcial `idx_pc_partial_active_rating_price` fue uno de los más eficientes. Redujo los documentos examinados de **32.951** a **120**, con una mejora de tiempo de **27 ms** a **1 ms**. Además, el `docsPerReturned` pasó de **274.59** a **1.00**, lo que evidencia una consulta altamente eficiente.
+
+En `product_reviews`, el índice por `product_id` fue fundamental. La consulta de reseñas por producto pasó de examinar **102.172** documentos a solo **3**, reduciendo el tiempo de **97 ms** a **1 ms**. El efficiency ratio pasó de **34057.33** a **1.00**, evidenciando una mejora crítica para consultas por producto y operaciones `$lookup`.
+
+El índice `idx_pr_rating_created_at` redujo los documentos examinados de **102.172** a **15.275**. Aunque el tiempo solo cambió de **78 ms** a **74 ms**, la consulta dejó de realizar un escaneo completo de colección y se volvió más eficiente en términos de documentos examinados.
+
+En `user_behavior`, el índice `idx_ub_event_type_period` no presentó mejora significativa. La consulta de eventos `PURCHASE` retornó una proporción muy alta de la colección, por lo cual el índice tuvo baja selectividad. El tiempo incluso aumentó de **176 ms** a **190 ms**. Esto demuestra que no todo índice mejora el rendimiento si el valor filtrado es demasiado frecuente.
+
+En `sellers`, el índice `idx_sellers_region_city` fue productivo, reduciendo los documentos examinados de **1.849** a **41** y el tiempo de **2 ms** a **1 ms**.
+
+---
+
+## 4.8 Aggregation pipeline MongoDB
+
+También se midió el rendimiento del pipeline analítico original y del pipeline optimizado.
+
+| Pipeline            | Tiempo promedio | Documentos retornados | Mejora vs original |
+| ------------------- | --------------: | --------------------: | -----------------: |
+| Pipeline original   |       959.52 ms |                    10 |                 0% |
+| Pipeline optimizado |       362.02 ms |                    10 |             62.27% |
+
+El pipeline optimizado redujo el tiempo promedio de ejecución de **959.52 ms** a **362.02 ms**, logrando una mejora de **62.27%**.
+
+Esta mejora se obtuvo mediante:
+
+* `$match` al inicio del pipeline.
+* Uso de índices sobre campos filtrados.
+* `$project` temprano para reducir campos innecesarios.
+* Reemplazo de `$unwind` por `$size` para contar reseñas sin multiplicar documentos.
+* Uso de `allowDiskUse=True`.
+
+El resultado evidencia que la optimización de pipelines no depende únicamente de índices, sino también del orden de los stages y de la reducción temprana de documentos intermedios.
 
 ---
 
 # 5. Sincronización entre PostgreSQL y MongoDB
 
-La arquitectura de Ecommify propone una sincronización basada en eventos de dominio.
+La arquitectura de Ecommify utiliza PostgreSQL y MongoDB con responsabilidades diferentes. PostgreSQL administra el núcleo transaccional y MongoDB almacena datos flexibles, analíticos y optimizados para lectura.
 
-## 5.1 Flujo de producto
+La sincronización entre sistemas se plantea mediante eventos de dominio y procesamiento asíncrono.
 
-1. Producto base se registra en PostgreSQL.
-2. Se emite evento `PRODUCT_CREATED`.
-3. El servicio de catálogo consume el evento.
-4. MongoDB actualiza `product_catalog`.
-5. El producto queda disponible para consultas flexibles.
+---
 
-## 5.2 Flujo de orden
+## 5.1 Flujos de datos entre PostgreSQL y MongoDB
 
-1. Usuario crea orden.
-2. PostgreSQL almacena la transacción.
-3. Se emite evento `ORDER_CREATED`.
-4. MongoDB actualiza métricas de producto y comportamiento.
-5. El motor analítico actualiza recomendaciones.
+### Flujo 1: Creación o actualización de producto
 
-## 5.3 Estrategia de consistencia
+1. El producto base se registra o actualiza en PostgreSQL.
+2. PostgreSQL conserva la información transaccional y normalizada.
+3. Se genera un evento de dominio, por ejemplo `PRODUCT_CREATED` o `PRODUCT_UPDATED`.
+4. Un proceso de sincronización consume el evento.
+5. MongoDB actualiza la colección `product_catalog`.
+6. El producto queda disponible para consultas rápidas del catálogo extendido.
 
-La consistencia fuerte se mantiene en PostgreSQL para operaciones críticas. MongoDB trabaja con consistencia eventual para catálogo extendido, analítica y recomendaciones.
+### Flujo 2: Creación de orden
 
-Para mitigar inconsistencias:
+1. La orden se registra en PostgreSQL.
+2. Se almacenan los datos en `orders`, `order_items` y `payments`.
+3. Se genera el evento `ORDER_CREATED`.
+4. Un proceso asíncrono actualiza métricas en MongoDB.
+5. En `product_catalog.metrics` se actualizan campos como `total_units_sold` y `total_revenue`.
+6. En `user_behavior` se registran eventos como `VIEW_PRODUCT`, `ADD_TO_CART` y `PURCHASE`.
 
-* Eventos idempotentes.
-* Reprocesamiento asíncrono.
-* Lecturas desde Primary en cambios críticos del catálogo.
-* Write Concern `majority` en operaciones visibles al usuario.
-* Monitoreo de replication lag.
+### Flujo 3: Registro de reseña
+
+1. La reseña se registra inicialmente asociada a una orden.
+2. Se genera un evento `REVIEW_CREATED`.
+3. MongoDB actualiza la colección `product_reviews`.
+4. Se recalculan métricas en `product_catalog.ratings`, como `average` y `count`.
+5. El catálogo extendido refleja la calificación agregada del producto.
+
+### Flujo 4: Analítica y recomendaciones
+
+1. MongoDB almacena eventos de comportamiento en `user_behavior`.
+2. Los datos se procesan de forma analítica.
+3. Se generan recomendaciones personalizadas.
+4. Las recomendaciones se almacenan en la colección `recommendations`.
+5. El frontend puede consultar recomendaciones sin afectar el núcleo transaccional de PostgreSQL.
+
+---
+
+## 5.2 Estrategia de consistencia implementada
+
+La estrategia de consistencia utilizada es híbrida:
+
+| Tipo de dato              | Sistema principal | Estrategia de consistencia       |
+| ------------------------- | ----------------- | -------------------------------- |
+| Órdenes                   | PostgreSQL        | Consistencia fuerte              |
+| Pagos                     | PostgreSQL        | Consistencia fuerte              |
+| Inventario                | PostgreSQL        | Consistencia fuerte              |
+| Productos base            | PostgreSQL        | Consistencia fuerte              |
+| Catálogo extendido        | MongoDB           | Consistencia eventual            |
+| Reseñas agregadas         | MongoDB           | Consistencia eventual controlada |
+| Comportamiento de usuario | MongoDB           | Consistencia eventual            |
+| Recomendaciones           | MongoDB           | Consistencia eventual            |
+
+PostgreSQL es la fuente de verdad para las operaciones críticas. MongoDB funciona como una proyección documental optimizada para lectura, análisis y flexibilidad.
+
+---
+
+## 5.3 Justificación de consistencia
+
+Las operaciones de pagos, órdenes e inventario requieren consistencia fuerte porque afectan directamente el estado financiero y operativo del negocio. Por esta razón se mantienen en PostgreSQL.
+
+Las métricas de catálogo, reseñas agregadas, eventos de comportamiento y recomendaciones pueden tolerar pequeñas demoras de sincronización. Por esta razón se almacenan en MongoDB bajo un modelo de consistencia eventual.
+
+Esta separación permite mejorar el rendimiento de lectura y análisis sin comprometer la confiabilidad del núcleo transaccional.
+
+---
+
+## 5.4 Mecanismos de mitigación
+
+Para reducir riesgos asociados a la consistencia eventual se proponen los siguientes mecanismos:
+
+| Riesgo                        | Mitigación                                                                      |
+| ----------------------------- | ------------------------------------------------------------------------------- |
+| Evento duplicado              | Procesamiento idempotente usando identificadores únicos                         |
+| Evento perdido                | Cola persistente de eventos y reintentos automáticos                            |
+| Retraso de sincronización     | Monitoreo de lag y procesamiento asíncrono                                      |
+| Métrica desactualizada        | Reprocesamiento periódico de métricas                                           |
+| Lectura crítica inconsistente | Leer desde PostgreSQL o desde Primary cuando se requiera consistencia inmediata |
+| Fallo parcial del proceso     | Registro de errores y reprocesamiento por lote                                  |
 
 ---
 
 # 6. Lecciones aprendidas
 
-## 6.1 Obstáculos encontrados
+## 6.1 Obstáculos encontrados y soluciones aplicadas
 
-Durante la implementación se identificaron los siguientes obstáculos:
+| Obstáculo                                                          | Impacto                                                                               | Solución aplicada                                                                                                         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| El dataset Olist tiene estructura relacional                       | Fue necesario adaptarlo al modelo documental de MongoDB                               | Se transformaron datos relacionales en colecciones como `product_catalog`, `product_reviews`, `sellers` y `user_behavior` |
+| Diferencia entre modelo relacional y documental                    | No era adecuado copiar la misma estructura de PostgreSQL en MongoDB                   | Se mantuvo PostgreSQL normalizado y MongoDB desnormalizado para lectura                                                   |
+| Duplicados al insertar reseñas                                     | Se generaron errores por `_id` repetidos                                              | Se eliminó duplicidad usando `review_id + product_id`                                                                     |
+| Índices existentes con nombres automáticos                         | Algunos índices ya existían con nombres como `product_id_1`                           | Se reutilizó el nombre real del índice con `hint()`                                                                       |
+| Sintaxis de Mongo Shell en Google Colab                            | Comandos como `createIndex()` fallaron en PyMongo                                     | Se usó `create_index()` en Python                                                                                         |
+| Free Tier de MongoDB no permite sharding real                      | No fue posible ejecutar `sh.enableSharding()` ni `sh.shardCollection()`               | Se documentó el diseño teórico y se simuló distribución across shards                                                     |
+| Algunos índices no fueron productivos                              | Se evidenció que índices con baja selectividad pueden empeorar o no mejorar consultas | Se validó cada índice con `.explain("executionStats")`                                                                    |
+| En PostgreSQL un índice no mejoró la consulta de reseñas negativas | La consulta empeoró por baja selectividad del filtro `review_score <= 2`              | Se documentó como evidencia de índice no productivo                                                                       |
+| Supabase Free Tier tiene recursos limitados                        | Las pruebas no representan una carga productiva real                                  | Se usó `EXPLAIN ANALYZE`, capturas y comparación antes/después                                                            |
+| Métricas avanzadas limitadas en Atlas Free Tier                    | No todas las métricas de monitoreo estaban disponibles                                | Se complementó con `.explain()`, `$indexStats` y medición manual de tiempos                                               |
 
-1. El dataset Olist tiene una estructura relacional y fue necesario transformarlo al modelo documental de Ecommify.
-2. Al insertar reseñas se presentaron duplicados de `_id`, solucionados con limpieza por `review_id + product_id`.
-3. Algunos índices ya existían con nombres automáticos, por ejemplo `product_id_1`, lo que generó conflictos al intentar crearlos con otro nombre.
-4. En Google Colab se intentaron ejecutar comandos de Mongo Shell como `createIndex()` y fue necesario ajustarlos a PyMongo con `create_index()`.
-5. El cluster gratuito M0 no permite ejecutar sharding real.
-6. Algunos índices no fueron productivos por baja selectividad, como el caso de `events.type = PURCHASE`.
+---
 
-## 6.2 Soluciones aplicadas
+## 6.2 Limitaciones del free tier
 
-| Obstáculo                       | Solución                                                |
-| ------------------------------- | ------------------------------------------------------- |
-| Dataset relacional              | Transformación a colecciones documentales               |
-| Duplicados en reseñas           | Eliminación de duplicados antes de insertar             |
-| Conflicto de índices existentes | Reutilización del nombre real del índice                |
-| Sintaxis Mongo Shell en Colab   | Conversión a PyMongo                                    |
-| Limitaciones Free Tier          | Documentación teórica de sharding                       |
-| Índices poco selectivos         | Evaluación con `.explain()` y análisis de productividad |
+Durante el desarrollo se utilizaron servicios gratuitos de MongoDB Atlas y Supabase. Estos entornos permitieron validar la implementación académica, pero presentan limitaciones frente a un ambiente productivo.
 
-## 6.3 Limitaciones del Free Tier
+### MongoDB Atlas Free Tier
 
-MongoDB Atlas Free Tier permitió validar conexión, carga de datos, índices, consultas y pipelines. Sin embargo, presentó limitaciones para:
+| Limitación                                   | Workaround implementado                                   |
+| -------------------------------------------- | --------------------------------------------------------- |
+| No permite sharding real                     | Diseño teórico de shard keys y simulación de distribución |
+| No permite configurar replica sets avanzados | Documentación de topología teórica de tres nodos          |
+| Métricas avanzadas limitadas                 | Uso de `.explain("executionStats")` y `$indexStats`       |
+| Capacidad reducida de cómputo                | Pruebas con dataset académico y medición controlada       |
+| No representa alta concurrencia real         | Análisis basado en consultas críticas y pipelines         |
 
-* Sharding real.
-* Configuración avanzada de replica sets.
-* Métricas avanzadas de monitoreo.
-* Pruebas de carga a gran escala.
-* Simulación real de arquitectura multi-AZ productiva.
+### Supabase Free Tier
 
-Como workaround se implementaron:
+| Limitación                                    | Workaround implementado                              |
+| --------------------------------------------- | ---------------------------------------------------- |
+| Recursos de CPU y memoria limitados           | Pruebas con `EXPLAIN (ANALYZE, BUFFERS)`             |
+| Sin configuración avanzada de infraestructura | Evaluación lógica de índices y particionamiento      |
+| Rendimiento variable por entorno compartido   | Comparación relativa antes/después                   |
+| Carga masiva limitada desde interfaz          | Importación controlada de CSV                        |
+| Sin arquitectura multi-nodo real              | Documentación de decisiones arquitectónicas teóricas |
 
-* Simulación de distribución across shards.
-* Diseño teórico de sharding.
-* Evaluación con `.explain("executionStats")`.
-* Uso de `$indexStats`.
-* Medición de tiempos desde notebook.
+---
+
+## 6.3 Aprendizajes principales
+
+La actividad permitió identificar que la optimización de bases de datos debe basarse en evidencia cuantitativa y no únicamente en la creación de índices.
+
+En PostgreSQL, los índices mejoraron consultas cuando estaban alineados con filtros selectivos y patrones reales de acceso. Sin embargo, también se evidenció que un índice puede no ser productivo si el filtro retorna una proporción alta de registros.
+
+En MongoDB, los índices ESR y parciales fueron altamente efectivos para consultas del catálogo, mientras que los índices sobre campos de baja selectividad tuvieron impacto limitado.
+
+La optimización de pipelines demostró que el orden de los stages, la proyección temprana y la reducción de documentos intermedios pueden generar mejoras importantes incluso sin cambiar la lógica funcional del análisis.
+
+Finalmente, la separación entre PostgreSQL y MongoDB permitió comprender la importancia de asignar responsabilidades diferentes a cada motor: PostgreSQL como fuente transaccional de verdad y MongoDB como modelo documental flexible para lectura, analítica y escalabilidad.
 
 ---
 
@@ -924,12 +1294,14 @@ Como workaround se implementaron:
 
 La implementación optimizada de Ecommify demuestra la utilidad de una arquitectura híbrida basada en PostgreSQL y MongoDB.
 
-PostgreSQL permite mantener integridad y consistencia fuerte en las operaciones críticas del negocio, como clientes, órdenes, pagos, productos, vendedores, items de orden y reseñas. MongoDB aporta flexibilidad y escalabilidad para catálogo extendido, reseñas enriquecidas, comportamiento de usuario y analítica.
+PostgreSQL permitió representar el núcleo transaccional del negocio mediante un modelo relacional normalizado, adecuado para clientes, vendedores, productos, órdenes, pagos y reseñas. MongoDB permitió construir un modelo documental flexible para catálogo extendido, reseñas completas, comportamiento de usuario, métricas comerciales y análisis.
 
-Las optimizaciones realizadas en PostgreSQL mostraron mejoras cuantitativas importantes en consultas críticas. La consulta de ventas por categoría y mes redujo su tiempo de ejecución de 1902.142 ms a 395.193 ms, equivalente a una mejora de 79.22%. La consulta de historial de órdenes por cliente mejoró 40.36%. Además, el particionamiento por rango permitió evidenciar `partition pruning` sobre la partición `orders_2018`.
+Las optimizaciones realizadas en PostgreSQL mostraron mejoras relevantes en consultas críticas. La consulta de ventas por categoría y mes obtuvo una mejora de **79.22%**, mientras que el historial de órdenes por cliente mejoró en **40.36%**. También se evidenció que no todos los índices son beneficiosos, como ocurrió con la consulta de productos con reseñas negativas.
 
-Las optimizaciones realizadas en MongoDB también mostraron mejoras significativas. Los índices ESR, parciales y de relación redujeron de forma importante los documentos examinados. El pipeline analítico optimizado redujo el tiempo promedio de ejecución en 62.27%.
+En MongoDB, los índices compuestos ESR, índices parciales y el índice por `product_id` redujeron significativamente los documentos examinados. El índice parcial de productos activos redujo documentos examinados de **32.951** a **120**, y el índice de reseñas por producto redujo documentos examinados de **102.172** a **3**.
 
-La evaluación permitió identificar que no todos los índices son útiles. En PostgreSQL, el índice sobre reseñas negativas no fue productivo para el patrón evaluado. En MongoDB, el índice sobre `events.type` presentó baja productividad para eventos `PURCHASE`. En ambos casos, la productividad dependió de la selectividad del campo y del patrón real de consulta.
+El pipeline analítico optimizado redujo el tiempo promedio de ejecución de **959.52 ms** a **362.02 ms**, logrando una mejora de **62.27%**.
 
-Finalmente, el diseño teórico de sharding y replica sets proporciona una base para escalar la solución en un ambiente productivo, mientras que la sincronización basada en eventos permite mantener desacoplados los sistemas PostgreSQL y MongoDB.
+El diseño teórico de sharding y replica sets permite proyectar la solución hacia un ambiente productivo con mayor escalabilidad, disponibilidad y tolerancia a fallos. La estrategia de sincronización basada en eventos permite mantener desacoplados PostgreSQL y MongoDB, asignando a cada motor la responsabilidad que mejor se ajusta a sus fortalezas.
+
+Finalmente, la actividad permitió concluir que la optimización debe estar basada en mediciones reales. Herramientas como `EXPLAIN (ANALYZE, BUFFERS)`, `.explain("executionStats")`, `$indexStats` y la comparación de tiempos antes/después son fundamentales para validar decisiones técnicas de indexación, modelado y arquitectura.
