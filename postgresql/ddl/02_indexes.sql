@@ -8,11 +8,6 @@ FROM pg_indexes
 WHERE schemaname = 'ecommify'
 ORDER BY tablename, indexname;
 
-
--- ==========================================
--- 1. ÍNDICES B-TREE (Estándar/Existentes)
--- ==========================================
-
 -- Índices para historial de órdenes por cliente
 CREATE INDEX IF NOT EXISTS idx_orders_customer_purchase_date
 ON ecommify.orders(customer_id, order_purchase_timestamp DESC);
@@ -50,11 +45,6 @@ ON ecommify.order_items(price);
 
 CREATE INDEX IF NOT EXISTS idx_payments_order_id
 ON ecommify.payments(order_id);
-
-
--- ==========================================
--- 2. ÍNDICES ESPECIALIZADOS (Nuevos)
--- ==========================================
 
 -- GIN (Trigram): Optimiza búsquedas difusas (fuzzy search) usando operador LIKE/ILIKE o similitud
 CREATE INDEX IF NOT EXISTS idx_products_category_trgm
