@@ -90,3 +90,42 @@ GROUP BY
     p.product_category_name
 ORDER BY negative_reviews DESC
 LIMIT 10;
+
+
+-- =============================================================
+-- CONSULTAS NUEVAS PARA VALIDAR ÍNDICES ESPECIALIZADOS
+-- =============================================================
+
+--- Consulta 5a: GIN (pg_trgm) - Búsqueda difusa en categorías de producto
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT product_id, product_category_name
+FROM ecommify.products
+WHERE product_category_name % 'esporte'
+   OR product_category_name ILIKE '%esporte%';
+
+--- Consulta 5b: GIN (JSONB) - Filtrado sobre atributos semiestructurados
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT product_id, product_category_name, product_metadata
+FROM ecommify.products
+WHERE product_metadata @> '{"material": "wood"}';
+
+--- Consulta 6: GiST (PostGIS) - Búsqueda espacial de vendedores más cercanos a Sao Paulo
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT s.seller_id, s.seller_city, s.seller_state,
+       ST_Distance(g.geolocation_point, ST_SetSRID(ST_Point(-46.63, -23.55), 4326)) AS distance_degrees
+FROM ecommify.sellers s
+JOIN ecommify.geolocation g ON s.seller_zip_code_prefix = g.geolocation_zip_code_prefix
+ORDER BY g.geolocation_point <-> ST_SetSRID(ST_Point(-46.63, -23.55), 4326)
+LIMIT 5;
+
+--- Consulta 7: BRIN - Rango cronológico amplio sobre órdenes y pagos
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT
+    DATE_TRUNC('quarter', o.order_purchase_timestamp) AS quarter,
+    COUNT(DISTINCT o.order_id) AS total_orders,
+    SUM(p.payment_value) AS total_payment
+FROM ecommify.orders o
+JOIN ecommify.payments p ON o.order_id = p.order_id
+WHERE o.order_purchase_timestamp BETWEEN '2016-09-01' AND '2018-09-01'
+GROUP BY DATE_TRUNC('quarter', o.order_purchase_timestamp)
+ORDER BY quarter;

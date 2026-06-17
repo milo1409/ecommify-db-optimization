@@ -1,5 +1,4 @@
 -- Consulta de indices:
-
 SELECT
     schemaname,
     tablename,
@@ -9,6 +8,10 @@ FROM pg_indexes
 WHERE schemaname = 'ecommify'
 ORDER BY tablename, indexname;
 
+
+-- ==========================================
+-- 1. ÍNDICES B-TREE (Estándar/Existentes)
+-- ==========================================
 
 -- Índices para historial de órdenes por cliente
 CREATE INDEX IF NOT EXISTS idx_orders_customer_purchase_date
@@ -47,3 +50,24 @@ ON ecommify.order_items(price);
 
 CREATE INDEX IF NOT EXISTS idx_payments_order_id
 ON ecommify.payments(order_id);
+
+
+-- ==========================================
+-- 2. ÍNDICES ESPECIALIZADOS (Nuevos)
+-- ==========================================
+
+-- GIN (Trigram): Optimiza búsquedas difusas (fuzzy search) usando operador LIKE/ILIKE o similitud
+CREATE INDEX IF NOT EXISTS idx_products_category_trgm
+ON ecommify.products USING gin(product_category_name pg_trgm_ops);
+
+-- GIN (JSONB): Optimiza búsquedas de rutas en atributos semiestructurados
+CREATE INDEX IF NOT EXISTS idx_products_metadata_gin
+ON ecommify.products USING gin(product_metadata jsonb_path_ops);
+
+-- GiST (Espacial): Optimiza búsquedas geográficas (distancia, pertenencia) en coordenadas PostGIS
+CREATE INDEX IF NOT EXISTS idx_geolocation_point_gist
+ON ecommify.geolocation USING gist(geolocation_point);
+
+-- BRIN (Block Range Index): Optimiza consultas de rango en grandes volúmenes de datos correlacionados cronológicamente
+CREATE INDEX IF NOT EXISTS idx_orders_purchase_brin
+ON ecommify.orders USING brin(order_purchase_timestamp);
